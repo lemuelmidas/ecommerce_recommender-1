@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Image Query - Product Finder{% endblock %}
+
+{% block content %}
+<h1>✍️ Handwritten Query Interface</h1>
+<p class="subtitle">Upload an image with handwritten text to search for products</p>
+
+<div class="form-group">
+    <label for="imageInput">Upload Image with Handwritten Text:</label>
+    <input type="file" id="imageInput" accept="image/*" onchange="previewImage(event)">
+</div>
+
+<div id="imagePreview" style="margin: 20px 0; text-align: center; display: none;">
+    <h3>Image Preview:</h3>
+    <img id="preview" style="max-width: 100%; max-height: 400px; border: 2px solid #ddd; border-radius: 8px; margin-top: 10px;">
+</div>
+
+<button id="submitBtn" onclick="processImage()">Process Image & Search</button>
+
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Processing image and searching...</p>
+</div>
+
+<div id="errorMessage"></div>
+
+<div class="results" id="results" style="display: none;">
+    <h2>Extracted Text (OCR)</h2>
+    <div class="extracted-text" id="extractedText"></div>
+
+    <h2>Search Results</h2>
+    <div class="response-box" id="responseBox"></div>
+
+    <h2>Product Matches</h2>
+    <div id="productsTable"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function previewImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('preview').src = e.target.result;
+            document.getElementById('imagePreview').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+async function processImage() {
+    const fileInput = document.getElementById('imageInput');
+    const file = fileInput.files[0];
+    const submitBtn = document.getElementById('submitBtn');
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+    const errorMessage = document.getElementById('errorMessage');
+
+    // Reset
+    errorMessage.innerHTML = '';
+    results.style.display = 'none';
+
+    if (!file) {
+        errorMessage.innerHTML = '<div class="error">Please select an image file.</div>';
+        return;
+    }
+
+    // Show loading
+    submitBtn.disabled = true;
+    loading.classList.add('active');
+
+    try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('/api/ocr-query', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Processing failed');
+        }
+
+        // Display extracted text
+        document.getElementById('extractedText').innerHTML = `
+            <strong>Extracted Text:</strong><br>
+            ${data.extracted_text}
+        `;
+
+        // Display response
+        document.getElementById('responseBox').textContent = data.response;
+
+        // Display products table
+        if (data.products && data.products.length > 0) {
+            let tableHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Description</th>
+                            <th>Price</th>
+                            <th>Category</th>
+                            <th>Match Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.products.forEach(product => {
+                const score = (product.similarity_score * 100).toFixed(1);
+                tableHTML += `
+                    <tr>
+                        <td><strong>${product.name}</strong></td>
+                        <td>${product.description || 'N/A'}</td>
+                        <td><span class="price">$${product.price.toFixed(2)}</span></td>
+                        <td>${product.category || 'N/A'}</td>
+                        <td><span class="similarity-score">${score}%</span></td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+
+            document.getElementById('productsTable').innerHTML = tableHTML;
+        } else {
+            document.getElementById('productsTable').innerHTML = '<p>No products found.</p>';
+        }
+
+        results.style.display = 'block';
+
+    } catch (error) {
+        errorMessage.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+    } finally {
+        submitBtn.disabled = false;
+        loading.classList.remove('active');
+    }
+}
+</script>
+{% endblock %}

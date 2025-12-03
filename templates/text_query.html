@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Text Query - Product Finder{% endblock %}
+
+{% block content %}
+<h1>📝 Text Query Interface</h1>
+<p class="subtitle">Search for products using natural language</p>
+
+<div class="form-group">
+    <label for="queryInput">Enter your product search query:</label>
+    <textarea id="queryInput" rows="4" placeholder="e.g., I'm looking for a wireless gaming mouse with RGB lighting under $50"></textarea>
+</div>
+
+<button id="submitBtn" onclick="searchProducts()">Search Products</button>
+
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Searching for products...</p>
+</div>
+
+<div id="errorMessage"></div>
+
+<div class="results" id="results" style="display: none;">
+    <h2>Search Results</h2>
+    
+    <div class="response-box" id="responseBox"></div>
+
+    <h2>Product Matches</h2>
+    <div id="productsTable"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function searchProducts() {
+    const query = document.getElementById('queryInput').value.trim();
+    const submitBtn = document.getElementById('submitBtn');
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+    const errorMessage = document.getElementById('errorMessage');
+
+    // Reset
+    errorMessage.innerHTML = '';
+    results.style.display = 'none';
+
+    if (!query) {
+        errorMessage.innerHTML = '<div class="error">Please enter a search query.</div>';
+        return;
+    }
+
+    // Show loading
+    submitBtn.disabled = true;
+    loading.classList.add('active');
+
+    try {
+        const response = await fetch('/api/recommend', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: query })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Search failed');
+        }
+
+        // Display response
+        document.getElementById('responseBox').textContent = data.response;
+
+        // Display products table
+        if (data.products && data.products.length > 0) {
+            let tableHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Description</th>
+                            <th>Price</th>
+                            <th>Category</th>
+                            <th>Match Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.products.forEach(product => {
+                const score = (product.similarity_score * 100).toFixed(1);
+                tableHTML += `
+                    <tr>
+                        <td><strong>${product.name}</strong></td>
+                        <td>${product.description || 'N/A'}</td>
+                        <td><span class="price">$${product.price.toFixed(2)}</span></td>
+                        <td>${product.category || 'N/A'}</td>
+                        <td><span class="similarity-score">${score}%</span></td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+
+            document.getElementById('productsTable').innerHTML = tableHTML;
+        } else {
+            document.getElementById('productsTable').innerHTML = '<p>No products found.</p>';
+        }
+
+        results.style.display = 'block';
+
+    } catch (error) {
+        errorMessage.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+    } finally {
+        submitBtn.disabled = false;
+        loading.classList.remove('active');
+    }
+}
+
+// Allow Enter key to submit
+document.getElementById('queryInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter' && e.ctrlKey) {
+        searchProducts();
+    }
+});
+</script>
+{% endblock %}
